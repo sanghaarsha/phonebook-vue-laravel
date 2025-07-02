@@ -8,7 +8,7 @@ class Contact extends Model
 {
     protected $fillable = ['name'];
 
-    public function phoneNumbers()
+    public function phoneNumber()
     {
         return $this->hasMany(PhoneNumber::class);
     }

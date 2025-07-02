@@ -11,7 +11,9 @@ class EnsureJsonRequest
     public function handle(Request $request, Closure $next): Response
     {
         if ($request->header('Content-Type') !== 'application/json') {
-            return response()->json(['message' => 'Only application/json requests are accepted.',
+            return response()->json([
+                'status' => false,
+                'message' => 'Only application/json requests are accepted.',
             ], 415);
         }
 

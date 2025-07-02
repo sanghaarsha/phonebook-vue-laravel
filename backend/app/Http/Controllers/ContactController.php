@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreContactRequest;
 use App\Models\Contact;
 use Illuminate\Http\Request;
 
@@ -11,31 +10,47 @@ class ContactController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $data = Contact::with('phoneNumbers')->get();
+        $query = Contact::query();
 
-        return response()->json([
-            'status' => true,
-            'data' => $data,
-        ]);
+        if ($request->has('search')) {
+            $searchTerm = '%'.$request->input('search').'%';
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('name', 'like', $searchTerm)
+                    ->orWhereHas('phoneNumber', function ($subQuery) use ($searchTerm) {
+                        $subQuery->where('number', 'like', $searchTerm);
+                    });
+            });
+        }
+
+        $data = $query->with('phoneNumber')->paginate(10);
+
+        return response()->json($data);
     }
 
-    public function store(StoreContactRequest $request)
+    /**
+     * Store a newly created resource in storage.
+     */
+    public function store(Request $request)
     {
-        $data = $request->validated();
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'number' => 'required|string|min:10|regex:/^(\+977)?[9][6-9]\d{8}$/',
+        ]);
 
         $contact = Contact::create([
             'name' => $data['name'],
         ]);
 
-        $contact->phoneNumbers()->create([
-            'number' => $data['phone_number'],
+        $contact->phoneNumber()->create([
+            'number' => $data['number'],
         ]);
 
         return response()->json([
             'status' => true,
-            'data' => $contact,
+            'message' => 'Contact created successfully',
+            'data' => $contact->load('phoneNumber'),
         ], 201);
     }
 
@@ -44,12 +59,13 @@ class ContactController extends Controller
      */
     public function show(Contact $contact)
     {
-        $contact->load('phoneNumbers');
+        $data = $contact->load('phoneNumber');
 
         return response()->json([
             'status' => true,
-            'data' => $contact,
-        ], 201);
+            'message' => 'Contact fetched successfully',
+            'data' => $data,
+        ]);
     }
 
     /**
@@ -59,46 +75,62 @@ class ContactController extends Controller
     {
         $data = $request->validate([
             'name' => 'required|string|max:255',
-            'prev_phone_number' => 'required|string|min:10|regex:/^(\+977)?[9][6-9]\d{8}$/',
-            'new_phone_number' => 'required|string|min:10|regex:/^(\+977)?[9][6-9]\d{8}$/',
+            'old_number' => 'required|string|min:10|regex:/^(\+977)?[9][6-9]\d{8}$/',
+            'new_number' => 'required|string|min:10|regex:/^(\+977)?[9][6-9]\d{8}$/',
         ]);
 
-        $phoneNumber = $contact->phoneNumbers()->where('number', $data['prev_phone_number'])->first();
-
-        if ($phoneNumber) {
-            $phoneNumber->update([
-                'number' => $data['new_phone_number'],
+        if (isset($data['name'])) {
+            $contact->update([
+                'name' => $data['name'],
             ]);
         }
 
-        $contact->update([
-            'name' => $data['name'],
+        $contact->phoneNumber()->where('number', $data['old_number'])->update([
+            'number' => $data['new_number'],
         ]);
 
         return response()->json([
             'status' => true,
-            'data' => $contact->fresh()->load('phoneNumbers'),
+            'message' => 'Contact updated successfully',
+            'data' => $contact->load('phoneNumber'),
         ]);
     }
 
-    public function add()
+    /**
+     * Add a phone number to already existing contact
+     */
+    public function add(Request $request, Contact $contact)
     {
-        $request = request();
         $data = $request->validate([
-            'id' => 'required',
-            'phone_number' => 'required|string|min:10|regex:/^(\+977)?[9][6-9]\d{8}$/',
+            'number' => 'required|string|min:10|regex:/^(\+977)?[9][6-9]\d{8}$/',
         ]);
 
-        $contact = Contact::findOrFail($data['id']);
-
-        $phoneNumber = $contact->phoneNumbers()->create([
-            'number' => $data['phone_number'],
+        $contact->phoneNumber()->create([
+            'number' => $data['number'],
         ]);
 
         return response()->json([
             'status' => true,
-            'data' => $contact->fresh()->load('phoneNumbers'),
-        ], 201);
+            'message' => 'New number added to the contact',
+            'data' => $contact->load('phoneNumber'),
+        ]);
+    }
+
+    /**
+     * Remove a phone number from an already existing contact
+     */
+    public function remove(Request $request, Contact $contact)
+    {
+        $data = $request->validate([
+            'number' => 'required|string|min:10|regex:/^(\+977)?[9][6-9]\d{8}$/',
+        ]);
+
+        $contact->phoneNumber()->where('number', $data['number'])->delete();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Number deleted from the contact',
+        ]);
     }
 
     /**
@@ -107,5 +139,10 @@ class ContactController extends Controller
     public function destroy(Contact $contact)
     {
         $contact->delete();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Contact deleted successfully',
+        ], 200);
     }
 }

@@ -2,12 +2,21 @@
 
 use App\Http\Controllers\ContactController;
 use App\Http\Middleware\EnsureJsonRequest;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware('auth:sanctum');
+Route::middleware(EnsureJsonRequest::class)->group(function () {
+    Route::apiResource('/contact', ContactController::class);
+    Route::prefix('/contact/{contact}')
+        ->controller(ContactController::class)
+        ->group(function () {
+            Route::post('/add', 'add');
+            Route::delete('/remove', 'remove');
+        });
+});
 
-Route::middleware(EnsureJsonRequest::class)->apiResource('/contact', ContactController::class);
-Route::post('/contact/add', [ContactController::class, 'add']);
+Route::fallback(function () {
+    return response()->json([
+        'status' => false,
+        'message' => 'Invalid Route',
+    ], 404);
+});
